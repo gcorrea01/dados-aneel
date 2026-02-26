@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 import pathlib
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import altair as alt
 import pandas as pd
@@ -13,12 +13,11 @@ from tarifa_monitor import (
     TariffRow,
     cagr,
     fetch_aneel_history,
-    fetch_ipca_indices,
     pct_change,
 )
 
 
-st.set_page_config(page_title="Monitor Tarifas ANEEL x IPCA", layout="wide")
+st.set_page_config(page_title="Monitor Tarifas ANEEL", layout="wide")
 
 
 def load_distribuidoras(path: pathlib.Path) -> List[str]:
@@ -52,30 +51,17 @@ def load_analysis(sig_agente: str, years: int) -> Dict:
     energy_acc = pct_change(base.total, latest.total)
     energy_cagr = cagr(base.total, latest.total, energy_years)
 
-    ipca_start = dt.date(base.ini.year, base.ini.month, 1)
-    ipca_end = dt.date(latest.ini.year, latest.ini.month, 1)
-    ipca = fetch_ipca_indices(ipca_start, ipca_end)
-    ipca_base = ipca[0]
-    ipca_latest = ipca[-1]
-    ipca_years = max((ipca_latest[0] - ipca_base[0]).days / 365.25, 0.0001)
-    ipca_acc = pct_change(ipca_base[1], ipca_latest[1])
-    ipca_cagr = cagr(ipca_base[1], ipca_latest[1], ipca_years)
-
     return {
         "history": history,
         "latest": latest,
         "base": base,
         "energy_acc": energy_acc,
         "energy_cagr": energy_cagr,
-        "ipca": ipca,
-        "ipca_acc": ipca_acc,
-        "ipca_cagr": ipca_cagr,
     }
 
 
 def build_chart_series(
     history: List[TariffRow],
-    ipca: List[Tuple[dt.date, float]],
     base: TariffRow,
 ) -> List[Dict]:
     energy_rows = [r for r in history if r.ini >= base.ini]
@@ -92,28 +78,10 @@ def build_chart_series(
                 "variacao_pct": round((row.total / energy_base - 1) * 100, 2),
             }
         )
-
-    ipca_base = ipca[0][1]
-    # Ponto de partida comum com a mesma data da base de energia.
-    points.append(
-        {
-            "data": base.ini.isoformat(),
-            "serie": "IPCA",
-            "variacao_pct": 0.0,
-        }
-    )
-    for date_ref, value in ipca:
-        points.append(
-            {
-                "data": date_ref.isoformat(),
-                "serie": "IPCA",
-                "variacao_pct": round((value / ipca_base - 1) * 100, 2),
-            }
-        )
     return points
 
 
-st.title("Monitor de Tarifas Residenciais: ANEEL x IPCA")
+st.title("Monitor de Tarifas Residenciais: ANEEL")
 st.caption(
     "Filtro: B1 Residencial | Tarifa de Aplicação | Convencional | "
     "SubClasse Residencial | DscDetalhe/NomPosto = Não se aplica"
@@ -127,15 +95,34 @@ if not distribuidoras:
 
 col_left, col_right = st.columns([3, 1])
 with col_left:
-    selected = st.selectbox("Concessionária", options=distribuidoras, index=0)
+    st.selectbox(
+        "Concessionária",
+        options=distribuidoras,
+        index=0,
+        key="dist_selector",
+    )
 with col_right:
-    janela_anos = st.selectbox("Janela de análise", options=[5, 10], index=0)
+    st.selectbox(
+        "Janela de análise",
+        options=[5, 10],
+        index=0,
+        key="janela_selector",
+    )
+
+selected = st.session_state.get("dist_selector", distribuidoras[0])
+janela_anos = st.session_state.get("janela_selector", 5)
+
+if st.session_state.get("_last_dist") != selected or st.session_state.get("_last_janela") != janela_anos:
+    st.session_state["_last_dist"] = selected
+    st.session_state["_last_janela"] = janela_anos
+    st.cache_data.clear()
+    st.rerun()
 
 if st.button("Atualizar agora (buscar dados mais recentes)"):
     st.cache_data.clear()
     st.rerun()
 
-with st.spinner("Consultando ANEEL e IBGE..."):
+with st.spinner("Consultando ANEEL..."):
     data = load_analysis(selected, janela_anos)
 
 if not data["history"]:
@@ -145,24 +132,20 @@ if not data["history"]:
 latest: TariffRow = data["latest"]
 base: TariffRow = data["base"]
 
+st.subheader(f"Concessionária selecionada: {selected}")
+
 mc1, mc2, mc3, mc4 = st.columns(4)
 mc1.metric("Tarifa atual (TE+TUSD)", f"R$ {latest.total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 mc2.metric("Início vigência atual", latest.ini.isoformat())
 mc3.metric(f"Reajuste {janela_anos} anos", f"{data['energy_acc'] * 100:.2f}%")
 mc4.metric(f"CAGR energia ({janela_anos} anos)", f"{data['energy_cagr'] * 100:.2f}% a.a.")
 
-mc5, mc6, mc7 = st.columns(3)
-mc5.metric(f"IPCA acumulado ({janela_anos} anos)", f"{data['ipca_acc'] * 100:.2f}%")
-mc6.metric(f"CAGR IPCA ({janela_anos} anos)", f"{data['ipca_cagr'] * 100:.2f}% a.a.")
-mc7.metric("Spread vs IPCA", f"{(data['energy_acc'] - data['ipca_acc']) * 100:.2f} p.p.")
-
 st.caption(
-    f"Base energia: {base.ini.isoformat()} | Atual energia: {latest.ini.isoformat()} | "
-    f"Base IPCA: {data['ipca'][0][0].isoformat()} | Atual IPCA: {data['ipca'][-1][0].isoformat()}"
+    f"Base energia: {base.ini.isoformat()} | Atual energia: {latest.ini.isoformat()}"
 )
 
-points = build_chart_series(data["history"], data["ipca"], base)
-st.subheader("Reajuste acumulado: Energia x IPCA")
+points = build_chart_series(data["history"], base)
+st.subheader("Reajuste acumulado da Energia")
 if not points:
     st.warning("Sem pontos suficientes para o gráfico no período selecionado.")
 else:

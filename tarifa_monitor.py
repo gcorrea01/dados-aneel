@@ -5,7 +5,6 @@ Monitora tarifas residenciais (B1 convencional) por distribuidora.
 Recursos:
 - Busca histórico de tarifas na API aberta da ANEEL.
 - Calcula tarifa total (TE + TUSD) e reajustes entre vigências.
-- Compara reajuste acumulado e CAGR de 5 anos com IPCA (IBGE SIDRA).
 - Gera CSVs por distribuidora e um resumo consolidado.
 """
 
@@ -27,7 +26,6 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 ANEEL_BASE = "https://dadosabertos.aneel.gov.br/api/3/action/datastore_search"
 ANEEL_RESOURCE_ID = "fcf2906c-7c32-4b9b-a637-054e7a5234f4"
-IBGE_BASE = "https://apisidra.ibge.gov.br/values/t/1737/n1/1/p/{start}-{end}/f/n"
 
 
 @dataclass
@@ -134,38 +132,6 @@ def pick_base_row(rows: List[TariffRow], target: dt.date) -> Optional[TariffRow]
     return rows[0] if rows else None
 
 
-def fetch_ipca_indices(start: dt.date, end: dt.date) -> List[Tuple[dt.date, float]]:
-    start_ym = f"{start.year:04d}{start.month:02d}"
-    end_ym = f"{end.year:04d}{end.month:02d}"
-    payload = fetch_json(IBGE_BASE.format(start=start_ym, end=end_ym))
-
-    out: List[Tuple[dt.date, float]] = []
-    for row in payload:
-        if row.get("D3N") != "IPCA - Número-índice (base: dezembro de 1993 = 100)":
-            continue
-        month_pt = row["D2N"]
-        year = int(month_pt.split()[-1])
-        month_name = month_pt.split()[0].lower()
-        month_map = {
-            "janeiro": 1,
-            "fevereiro": 2,
-            "março": 3,
-            "abril": 4,
-            "maio": 5,
-            "junho": 6,
-            "julho": 7,
-            "agosto": 8,
-            "setembro": 9,
-            "outubro": 10,
-            "novembro": 11,
-            "dezembro": 12,
-        }
-        month = month_map[month_name]
-        out.append((dt.date(year, month, 1), float(row["V"])))
-
-    return sorted(out, key=lambda x: x[0])
-
-
 def cagr(start_value: float, end_value: float, years: float) -> float:
     if start_value <= 0 or end_value <= 0 or years <= 0:
         return math.nan
@@ -244,18 +210,6 @@ def run(distribuidoras: Iterable[str], output_dir: pathlib.Path) -> None:
         energy_5y = pct_change(base.total, latest.total)
         energy_cagr = cagr(base.total, latest.total, years_energy)
 
-        ipca_start = dt.date(base.ini.year, base.ini.month, 1)
-        ipca_end = dt.date(latest.ini.year, latest.ini.month, 1)
-        ipca_series = fetch_ipca_indices(ipca_start, ipca_end)
-        if not ipca_series:
-            raise RuntimeError("Não foi possível obter série IPCA no intervalo solicitado.")
-        ipca_base = ipca_series[0]
-        ipca_latest = ipca_series[-1]
-
-        years_ipca = max((ipca_latest[0] - ipca_base[0]).days / 365.25, 0.0001)
-        ipca_5y = pct_change(ipca_base[1], ipca_latest[1])
-        ipca_cagr = cagr(ipca_base[1], ipca_latest[1], years_ipca)
-
         dist_slug = safe_filename(dist)
         hist_path = output_dir / "historico" / f"{dist_slug}.csv"
         write_history_csv(hist_path, history)
@@ -270,11 +224,6 @@ def run(distribuidoras: Iterable[str], output_dir: pathlib.Path) -> None:
                 "tarifa_final": round(latest.total, 2),
                 "reajuste_energia_5a_pct": round(energy_5y * 100, 2),
                 "cagr_energia_5a_pct_aa": round(energy_cagr * 100, 2),
-                "mes_base_ipca": ipca_base[0].isoformat(),
-                "mes_final_ipca": ipca_latest[0].isoformat(),
-                "ipca_5a_pct": round(ipca_5y * 100, 2),
-                "cagr_ipca_5a_pct_aa": round(ipca_cagr * 100, 2),
-                "spread_vs_ipca_pp": round((energy_5y - ipca_5y) * 100, 2),
                 "arquivo_historico": str(hist_path),
             }
         )
@@ -302,7 +251,7 @@ def run(distribuidoras: Iterable[str], output_dir: pathlib.Path) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Monitor de tarifas residenciais ANEEL vs IPCA.")
+    parser = argparse.ArgumentParser(description="Monitor de tarifas residenciais ANEEL.")
     parser.add_argument(
         "--distribuidoras",
         help="Lista separada por vírgula (ex.: CEEE-D,CPFL PAULISTA,ENEL SP).",

@@ -1,24 +1,19 @@
-# Monitor de Tarifa Residencial (ANEEL x IPCA)
+# Monitor de Tarifa Residencial (ANEEL)
 
-Este projeto coleta tarifas residenciais (`B1`, modalidade `Convencional`) por distribuidora na API aberta da ANEEL e compara os últimos 5 anos com o IPCA (IBGE SIDRA).
+Este projeto coleta tarifas residenciais (`B1`, modalidade `Convencional`) por distribuidora na API aberta da ANEEL e calcula métricas de reajuste para os últimos anos.
 
 ## O que ele gera
 
 - `output/historico/<distribuidora>.csv`: série histórica com TE, TUSD, tarifa total e reajuste entre vigências.
 - `output/resumo_comparativo.csv`: resumo por distribuidora com:
   - reajuste acumulado de 5 anos da tarifa;
-  - CAGR da tarifa (5 anos);
-  - IPCA acumulado no mesmo intervalo;
-  - CAGR do IPCA;
-  - diferença tarifa vs IPCA (pontos percentuais).
+  - CAGR da tarifa (5 anos).
 - `output/snapshots_mensais.csv`: histórico mensal das execuções para acompanhar novas homologações.
 
 ## Requisitos
 
 - `python3` (testado em 3.10+)
-- Acesso de rede às APIs:
-  - `https://dadosabertos.aneel.gov.br`
-  - `https://apisidra.ibge.gov.br`
+- Acesso de rede à API `https://dadosabertos.aneel.gov.br`
 
 ## Configuração de distribuidoras
 
@@ -42,7 +37,7 @@ Ou passando a lista diretamente:
 python3 tarifa_monitor.py --distribuidoras "CEEE-D,CPFL PAULISTA,ENEL SP"
 ```
 
-## UI (gráfico Energia x IPCA)
+## UI (gráfico de reajuste da energia)
 
 1. Instalar dependência:
 
@@ -60,7 +55,7 @@ Na UI você consegue:
 - selecionar a concessionária;
 - escolher janela de 5 ou 10 anos;
 - ver card com tarifa atual mais recente;
-- comparar o reajuste acumulado de energia contra IPCA no gráfico;
+- visualizar o reajuste acumulado da energia no gráfico;
 - forçar atualização imediata clicando em `Atualizar agora`.
 
 ## Atualização mensal (cron)
