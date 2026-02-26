@@ -37,7 +37,7 @@ Ou passando a lista diretamente:
 python3 tarifa_monitor.py --distribuidoras "CEEE-D,CPFL PAULISTA,ENEL SP"
 ```
 
-## UI (gráfico de reajuste da energia)
+## UI local (Streamlit)
 
 1. Instalar dependência:
 
@@ -57,6 +57,17 @@ Na UI você consegue:
 - ver card com tarifa atual mais recente;
 - visualizar o reajuste acumulado da energia no gráfico;
 - forçar atualização imediata clicando em `Atualizar agora`.
+
+## Deploy no Streamlit Community Cloud
+
+1. Suba o projeto para um repositório no GitHub.
+2. Acesse `share.streamlit.io` e clique em `New app`.
+3. Selecione o repositório, branch e arquivo principal `app.py`.
+4. Clique em `Deploy`.
+
+Observações:
+- O app usa `requirements.txt` da raiz automaticamente.
+- Sempre que fizer push na branch selecionada, o deploy é atualizado.
 
 ## Atualização mensal (cron)
 
